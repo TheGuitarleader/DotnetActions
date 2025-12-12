@@ -38,6 +38,22 @@ jobs:
           $version = $env:GITHUB_REF -replace '^refs/heads/release/', ''
           Add-Content $env:GITHUB_OUTPUT "version=$version"
 
+      - name: Update project versions
+        shell: pwsh
+        run: |
+          $version = "${{ steps.extract_version.outputs.version }}"
+          Write-Host "Updating all projects to version $version"
+          Get-ChildItem -Recurse -Filter *.csproj | ForEach-Object {
+            $proj = $_.FullName
+            $content = Get-Content $proj
+
+            if ($content -match "<AssemblyVersion>.*</AssemblyVersion>") {
+              $content -replace '<AssemblyVersion>.*</AssemblyVersion>', "<AssemblyVersion>$version</AssemblyVersion>" | Set-Content $proj
+            } else {
+              $content -replace '<PropertyGroup>', "<PropertyGroup>`n    <AssemblyVersion>$version</AssemblyVersion>" | Set-Content $proj
+            }
+          }
+
       - name: Build Executable
         shell: pwsh
         run: |
