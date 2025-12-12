@@ -121,10 +121,6 @@ jobs:
               }
           }
 
-          if (-not $notes) {
-              $notes = git log -n 20 --pretty=format:"- %s" | Out-String
-          }
-
           $escaped = $notes.Replace('%','%25').Replace("`n",'%0A').Replace("`r",'%0D')
           Add-Content -Path $env:GITHUB_OUTPUT -Value "notes=$escaped"
 
