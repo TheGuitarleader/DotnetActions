@@ -1,4 +1,7 @@
-name: Release .Net Project
+name: Release .NET Project
+
+permissions:
+  contents: write
 
 on:
   push:
@@ -6,85 +9,127 @@ on:
       - 'release/*'
 
 jobs:
-  update-version:
-    name: Update Version
-    runs-on: ubuntu-latest
-    outputs:
-      version: ${{ steps.get-version.outputs.version }}
-    steps:
-      - uses: actions/checkout@v4
-
-      # Extract version from branch name
-      - id: get-version
-        run: |
-          BRANCH_NAME=${GITHUB_REF#refs/heads/}
-          VERSION=${BRANCH_NAME#release/}
-          echo "version=$VERSION" >> $GITHUB_OUTPUT
-
-      # Update all .csproj files
-      - name: Update project versions
-        run: |
-          VERSION=${{ steps.get-version.outputs.version }}
-          echo "Updating all projects to version $VERSION"
-          find . -name "*.csproj" | while read proj; do
-            if grep -q "<AssemblyVersion>" "$proj"; then
-              sed -i.bak "s|<AssemblyVersion>.*</AssemblyVersion>|<AssemblyVersion>$VERSION</AssemblyVersion>|" "$proj"
-            else
-              sed -i.bak "0,/<PropertyGroup>/s|<PropertyGroup>|<PropertyGroup>\n    <AssemblyVersion>$VERSION</AssemblyVersion>|" "$proj"
-            fi
-          done
-
-      - name: Commit version changes
-        run: |
-          git config user.name "github-actions"
-          git config user.email "github-actions@github.com"
-          git add *.csproj
-          git commit -m "Update version to ${{ steps.get-version.outputs.version }}" || echo "No changes to commit"
-          git push
 
   build:
-    name: Build Release
-    needs: update-version
+    name: Build Executables
+    runs-on: ubuntu-latest
     strategy:
       matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
-    runs-on: ${{ matrix.os }}
-    steps:
-      - uses: actions/checkout@v4
+        os: [windows, macos, ubuntu]
+        arch: [x64, arm64]
+    outputs:
+      version: ${{ steps.extract_version.outputs.version }}
 
-      - uses: actions/setup-dotnet@v4
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
         with:
           dotnet-version: 9.0.x
 
-      - name: Restore dependencies
-        run: dotnet restore
+      - name: Extract version
+        id: extract_version
+        shell: pwsh
+        run: |
+          $version = $env:GITHUB_REF -replace '^refs/heads/release/', ''
+          Add-Content $env:GITHUB_OUTPUT "version=$version"
 
-      - name: Build Release
-        run: dotnet publish -c Release -o dist/${{ matrix.os }} --self-contained false
+      - name: Build Executable
+        shell: pwsh
+        run: |
+          $version = "${{ steps.extract_version.outputs.version }}"
+          $repo = "${{ github.repository }}" -split "/" | Select-Object -Last 1
+          $os = "${{ matrix.os }}"
+          $arch = "${{ matrix.arch }}"
 
-      - name: Upload artifact
+          $rid = switch ($os) {
+              "windows" { "win-$arch" }
+              "macos"   { "osx-$arch" }
+              "ubuntu"  { "linux-$arch" }
+          }
+
+          $outputDir = Join-Path $env:GITHUB_WORKSPACE "dist/$os/$arch"
+          New-Item -ItemType Directory -Force -Path $outputDir
+
+          dotnet publish "./$repo.csproj" `
+            -c Release `
+            -r $rid `
+            /p:PublishSingleFile=true `
+            /p:DebugType=None `
+            /p:DebugSymbols=false `
+            /p:PublishDir=$outputDir
+
+          if ($os -eq "windows") {
+              Rename-Item "$outputDir/$repo.exe" "$repo-$version-$os-$arch.exe"
+          } else {
+              Rename-Item "$outputDir/$repo" "$repo-$version-$os-$arch"
+          }
+
+      - name: Upload Executable
         uses: actions/upload-artifact@v4
         with:
-          name: release-${{ matrix.os }}
-          path: dist/${{ matrix.os }}
+          # Artifact name MUST be static, unique per matrix  
+          name: build-${{ matrix.os }}-${{ matrix.arch }}
+          path: |
+            dist/${{ matrix.os }}/${{ matrix.arch }}/*.exe
+            dist/${{ matrix.os }}/${{ matrix.arch }}/*${{ steps.extract_version.outputs.version }}*
+          if-no-files-found: error
+
 
   release:
     name: Create GitHub Release
     needs: build
     runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
 
+    steps:
       - name: Download artifacts
         uses: actions/download-artifact@v4
         with:
           path: artifacts
 
-      - name: Create Release
+      - name: Collect binaries into release folder
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path release
+
+          $files = Get-ChildItem artifacts -Recurse -File | Where-Object {
+              $_.Name -match "${{ needs.build.outputs.version }}"
+          }
+
+          foreach ($file in $files) {
+              Copy-Item $file.FullName -Destination "release/$($file.Name)" -Force
+          }
+
+          Write-Host "Release files:"
+          Get-ChildItem release
+
+      - name: Generate Release Notes
+        id: release_notes
+        shell: pwsh
+        run: |
+          $version = "${{ needs.build.outputs.version }}"
+          $notes = ""
+
+          if (Test-Path "CHANGELOG.md") {
+              $content = Get-Content "CHANGELOG.md" -Raw
+              if ($content -match "## \[$version\](.*?)(## \[|$)") {
+                  $notes = $matches[1].Trim()
+              }
+          }
+
+          $escaped = $notes.Replace('%','%25').Replace("`n",'%0A').Replace("`r",'%0D')
+          Add-Content -Path $env:GITHUB_OUTPUT -Value "notes=$escaped"
+
+      - name: Create GitHub Release
         uses: softprops/action-gh-release@v1
         with:
-          tag_name: v${{ needs.update-version.outputs.version }}
-          name: Release v${{ needs.update-version.outputs.version }}
-          files: artifacts/**/*
+          tag_name: ${{ needs.build.outputs.version }}
+          name: "${{ github.event.repository.name }} ${{ needs.build.outputs.version }}"
+          body: ${{ steps.release_notes.outputs.notes }}
+          files: release/*
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
