@@ -1,0 +1,90 @@
+name: Release .Net Project
+
+on:
+  push:
+    branches:
+      - 'release/*'
+
+jobs:
+  update-version:
+    name: Update Version
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.get-version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+
+      # Extract version from branch name
+      - id: get-version
+        run: |
+          BRANCH_NAME=${GITHUB_REF#refs/heads/}
+          VERSION=${BRANCH_NAME#release/}
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+      # Update all .csproj files
+      - name: Update project versions
+        run: |
+          VERSION=${{ steps.get-version.outputs.version }}
+          echo "Updating all projects to version $VERSION"
+          find . -name "*.csproj" | while read proj; do
+            if grep -q "<AssemblyVersion>" "$proj"; then
+              sed -i.bak "s|<AssemblyVersion>.*</AssemblyVersion>|<AssemblyVersion>$VERSION</AssemblyVersion>|" "$proj"
+            else
+              sed -i.bak "0,/<PropertyGroup>/s|<PropertyGroup>|<PropertyGroup>\n    <AssemblyVersion>$VERSION</AssemblyVersion>|" "$proj"
+            fi
+          done
+
+      - name: Commit version changes
+        run: |
+          git config user.name "github-actions"
+          git config user.email "github-actions@github.com"
+          git add *.csproj
+          git commit -m "Update version to ${{ steps.get-version.outputs.version }}" || echo "No changes to commit"
+          git push
+
+  build:
+    name: Build Release
+    needs: update-version
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 9.0.x
+
+      - name: Restore dependencies
+        run: dotnet restore
+
+      - name: Build Release
+        run: dotnet publish -c Release -o dist/${{ matrix.os }} --self-contained false
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-${{ matrix.os }}
+          path: dist/${{ matrix.os }}
+
+  release:
+    name: Create GitHub Release
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: v${{ needs.update-version.outputs.version }}
+          name: Release v${{ needs.update-version.outputs.version }}
+          files: artifacts/**/*
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
