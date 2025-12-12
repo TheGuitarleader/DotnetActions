@@ -12,6 +12,8 @@ jobs:
     strategy:
       matrix:
         os: [ubuntu-latest, windows-latest, macos-latest]
+    outputs:
+      version: ${{ steps.extract_version.outputs.version }}
 
     steps:
       - uses: actions/checkout@v4
@@ -26,11 +28,12 @@ jobs:
         run: |
           BRANCH=${GITHUB_REF#refs/heads/}
           VERSION=${BRANCH#release/}
-          echo "VERSION=$VERSION" >> $GITHUB_ENV
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
 
       # Update all .csproj files locally (no commit)
       - name: Update project versions
         run: |
+          VERSION=${{ steps.extract_version.outputs.version }}
           echo "Updating projects to version $VERSION"
           find . -name "*.csproj" | while read proj; do
             if grep -q "<AssemblyVersion>" "$proj"; then
@@ -67,8 +70,8 @@ jobs:
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v1
         with:
-          tag_name: v${{ github.ref_name#release/ }}
-          name: Release v${{ github.ref_name#release/ }}
+          tag_name: v${{ needs.build.outputs.version }}
+          name: Release v${{ needs.build.outputs.version }}
           files: artifacts/**/*
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
