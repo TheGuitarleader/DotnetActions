@@ -22,7 +22,7 @@ jobs:
         with:
           dotnet-version: 9.0.x
 
-      # Extract version from branch
+      # Extract version from branch (PowerShell works on all OS)
       - name: Extract version
         id: extract_version
         shell: pwsh
@@ -30,18 +30,30 @@ jobs:
           $branch = $env:GITHUB_REF -replace '^refs/heads/release/', ''
           Write-Output "version=$branch" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8
 
-      # Update all .csproj files locally (no commit)
+      # Update all .csproj files locally (PowerShell)
       - name: Update project versions
+        shell: pwsh
         run: |
-          VERSION=${{ steps.extract_version.outputs.version }}
-          echo "Updating projects to version $VERSION"
-          find . -name "*.csproj" | while read proj; do
-            if grep -q "<AssemblyVersion>" "$proj"; then
-              sed -i.bak "s|<AssemblyVersion>.*</AssemblyVersion>|<AssemblyVersion>$VERSION</AssemblyVersion>|" "$proj"
-            else
-              sed -i.bak "0,/<PropertyGroup>/s|<PropertyGroup>|<PropertyGroup>\n    <AssemblyVersion>$VERSION</AssemblyVersion>|" "$proj"
-            fi
-          done
+          $version = "${{ steps.extract_version.outputs.version }}"
+          Write-Host "Updating all projects to version $version"
+
+          Get-ChildItem -Recurse -Filter *.csproj | ForEach-Object {
+              $proj = $_.FullName
+              
+              # Update <Version>
+              if (Select-String "<Version>" $proj) {
+                  (Get-Content $proj) -replace '<Version>.*</Version>', "<Version>$version</Version>" | Set-Content $proj
+              } else {
+                  (Get-Content $proj) -replace '<PropertyGroup>', "<PropertyGroup>`n    <Version>$version</Version>" | Set-Content $proj
+              }
+
+              # Update <AssemblyVersion>
+              if (Select-String "<AssemblyVersion>" $proj) {
+                  (Get-Content $proj) -replace '<AssemblyVersion>.*</AssemblyVersion>', "<AssemblyVersion>$version</AssemblyVersion>" | Set-Content $proj
+              } else {
+                  (Get-Content $proj) -replace '<PropertyGroup>', "<PropertyGroup>`n    <AssemblyVersion>$version</AssemblyVersion>" | Set-Content $proj
+              }
+          }
 
       # Restore & build
       - name: Restore dependencies
