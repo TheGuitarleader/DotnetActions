@@ -131,8 +131,8 @@ jobs:
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v1
         with:
-          tag_name: v${{ needs.build.outputs.version }}
-          name: "v${{ needs.build.outputs.version }}"
+          tag_name: ${{ needs.build.outputs.version }}
+          name: "${{ github.event.repository.name }} ${{ needs.build.outputs.version }}"
           body: ${{ steps.release_notes.outputs.notes }}
           files: release/*
         env:
