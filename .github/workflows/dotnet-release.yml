@@ -10,8 +10,8 @@ on:
 
 jobs:
   build:
-    name: Build Releases
-    runs-on: ubuntu-latest
+    name: Build Cross-Platform Executables
+    runs-on: ubuntu-latest   # can change to debian-12 if desired
     strategy:
       matrix:
         os: [windows, macos, ubuntu]
@@ -20,74 +20,75 @@ jobs:
       version: ${{ steps.extract_version.outputs.version }}
 
     steps:
-      - uses: actions/checkout@v4
+      # Checkout full repo to allow git commands (optional)
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
+      # Setup .NET SDK
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
         with:
           dotnet-version: 9.0.x
 
-      # Extract version from branch
+      # Extract version from branch name (release/1.0.0 → 1.0.0)
       - name: Extract version
         id: extract_version
         shell: pwsh
         run: |
-          $branch = $env:GITHUB_REF -replace '^refs/heads/release/', ''
-          Write-Output "version=$branch" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8
+          $version = $env:GITHUB_REF -replace '^refs/heads/release/', ''
+          Write-Output "version=$version" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8
 
-      # Build CLI (single file, self-contained)
-      - name: Build Project
-        shell: pwsh
-        run: |
-          $version = "${{ steps.extract_version.outputs.version }}"
-          $repo = "${{ github.repository }}"
-          $os = "${{ matrix.os }}"
-          $arch = "${{ matrix.arch }}"
-          $rid = switch ($os) {
-              "windows" { "win-$arch" }
-              "macos"   { "osx-$arch" }
-              "ubuntu"  { "linux-$arch" }
-          }
-
-          $outputDir = Join-Path $env:GITHUB_WORKSPACE "dist\$os\$arch"
-          New-Item -ItemType Directory -Force -Path $outputDir
-          
-          dotnet publish "./DotnetActions.csproj" -c Release -r $rid /p:PublishSingleFile=true /p:PublishDir=$outputDir
-
-      # Package build into zip
-      - name: Package Builds
+      # Build self-contained executable
+      - name: Build Executable
         shell: pwsh
         run: |
           $version = "${{ steps.extract_version.outputs.version }}"
           $repo = "${{ github.repository }}" -split "/" | Select-Object -Last 1
           $os = "${{ matrix.os }}"
           $arch = "${{ matrix.arch }}"
-          $distDir = Join-Path $env:GITHUB_WORKSPACE "dist\$os\$arch"
-          $artifactsDir = Join-Path $env:GITHUB_WORKSPACE "artifacts"
-          New-Item -ItemType Directory -Force -Path $artifactsDir
 
-          $zipName = "$repo-$version-$os-$arch.zip"
-          $zipPath = Join-Path $artifactsDir $zipName
-          Compress-Archive -Path "$distDir\*" -DestinationPath $zipPath -Force
+          # Determine runtime identifier
+          $rid = switch ($os) {
+              "windows" { "win-$arch" }
+              "macos"   { "osx-$arch" }
+              "ubuntu"  { "linux-$arch" }
+          }
 
-      # Upload artifact
-      - name: Upload artifacts
+          # Output directory
+          $outputDir = Join-Path $env:GITHUB_WORKSPACE "dist\$os\$arch"
+          New-Item -ItemType Directory -Force -Path $outputDir
+
+          # Publish the .NET project as single-file self-contained executable
+          dotnet publish "./$repo.csproj" -c Release -r $rid /p:PublishSingleFile=true /p:PublishDir=$outputDir
+
+          # Rename executable to <repo>-<version>-<os>-<arch>[.exe]
+          if ($os -eq "windows") {
+              Rename-Item -Path "$outputDir\$repo.exe" -NewName "$repo-$version-$os-$arch.exe"
+          } else {
+              Rename-Item -Path "$outputDir/$repo" -NewName "$repo-$version-$os-$arch"
+          }
+
+      # Upload executable for release (unique per OS+arch)
+      - name: Upload Executable
         uses: actions/upload-artifact@v4
         with:
-          name: dotnet-${{ matrix.os }}-${{ matrix.arch }}
-          path: artifacts/*
+          name: $repo-${{ matrix.os }}-${{ matrix.arch }}
+          path: dist/${{ matrix.os }}/${{ matrix.arch }}/*
 
   release:
     name: Create GitHub Release
     needs: build
     runs-on: ubuntu-latest
     steps:
-      - name: Download artifacts
+      # Download all executables from the matrix builds
+      - name: Download Executables
         uses: actions/download-artifact@v4
         with:
           path: artifacts
 
-      # Create Release Notes from CHANGELOG.md or commits
+      # Generate release notes from CHANGELOG.md or fallback to last 20 commits
       - name: Generate Release Notes
         id: release_notes
         shell: pwsh
@@ -96,23 +97,23 @@ jobs:
           $changelog = "CHANGELOG.md"
           $notes = ""
           if (Test-Path $changelog) {
-              $notes = (Get-Content $changelog) -join "`n"
-              # Extract the section for this version
-              if ($notes -match "## \[$version\](.*?)(## \[|$)") {
+              $content = Get-Content $changelog -Raw
+              if ($content -match "## \[$version\](.*?)(## \[|$)") {
                   $notes = $matches[1].Trim()
               }
-          } else {
-              # Fallback: last 20 commits
+          }
+          if (-not $notes) {
               $notes = git log -n 20 --pretty=format:"- %s" | Out-String
           }
           Write-Output "notes=$notes" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8
 
+      # Create GitHub Release with all executables attached
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v1
         with:
           tag_name: v${{ needs.build.outputs.version }}
           name: "v${{ needs.build.outputs.version }}"
           body: ${{ steps.release_notes.outputs.notes }}
-          files: artifacts/*.zip
+          files: artifacts/**/*   # attaches all OS+arch executables
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
