@@ -82,38 +82,42 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     steps:
-      # Download all executables from the matrix builds
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
       - name: Download Executables
         uses: actions/download-artifact@v4
         with:
           path: artifacts
 
-      # Generate release notes from CHANGELOG.md or fallback to last 20 commits
       - name: Generate Release Notes
         id: release_notes
         shell: pwsh
         run: |
           $version = "${{ needs.build.outputs.version }}"
-          $changelog = "CHANGELOG.md"
           $notes = ""
-          if (Test-Path $changelog) {
-              $content = Get-Content $changelog -Raw
+
+          if (Test-Path "CHANGELOG.md") {
+              $content = Get-Content "CHANGELOG.md" -Raw
               if ($content -match "## \[$version\](.*?)(## \[|$)") {
                   $notes = $matches[1].Trim()
               }
           }
+
           if (-not $notes) {
               $notes = git log -n 20 --pretty=format:"- %s" | Out-String
           }
+
           Write-Output "notes=$notes" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8
 
-      # Create GitHub Release with all executables attached
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v1
         with:
           tag_name: v${{ needs.build.outputs.version }}
           name: "v${{ needs.build.outputs.version }}"
           body: ${{ steps.release_notes.outputs.notes }}
-          files: artifacts/**/*   # attaches all OS+arch executables
+          files: artifacts/**/* 
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
