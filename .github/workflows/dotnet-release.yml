@@ -25,10 +25,10 @@ jobs:
       # Extract version from branch
       - name: Extract version
         id: extract_version
+        shell: pwsh
         run: |
-          BRANCH=${GITHUB_REF#refs/heads/}
-          VERSION=${BRANCH#release/}
-          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          $branch = $env:GITHUB_REF -replace '^refs/heads/release/', ''
+          Write-Output "version=$branch" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8
 
       # Update all .csproj files locally (no commit)
       - name: Update project versions
