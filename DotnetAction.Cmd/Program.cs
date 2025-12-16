@@ -1,4 +1,4 @@
-﻿namespace DotnetActions
+﻿namespace DotnetAction.Cmd
 {
     internal class Program
     {
