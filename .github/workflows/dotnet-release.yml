@@ -60,10 +60,9 @@ jobs:
           $os = "${{ matrix.os }}"
           $arch = "${{ matrix.arch }}"
 
-          # Map ubuntu -> linux for filenames
           $osName = switch ($os) {
-              "windows" { "windows" }
-              "macos"   { "macos" }
+              "windows" { "win" }
+              "macos"   { "mac" }
               "ubuntu"  { "linux" }
           }
 
