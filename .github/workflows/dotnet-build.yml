@@ -19,7 +19,7 @@ jobs:
           dotnet-version: 9.0.x
 
       - name: Check code formatting
-        run: dotnet format --verify-no-changes
+        run: dotnet format ./DotnetActions.sln --verify-no-changes
 
   build:
     name: Build Release (Matrix)
