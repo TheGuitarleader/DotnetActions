@@ -59,14 +59,6 @@ jobs:
           $version = "${{ steps.extract_version.outputs.version }}"
           $os = "${{ matrix.os }}"
           $arch = "${{ matrix.arch }}"
-
-          # Map OS names for filenames
-          $osName = switch ($os) {
-              "windows" { "windows" }
-              "macos"   { "macos" }
-              "ubuntu"  { "linux" }
-          }
-
           $rid = switch ($os) {
               "windows" { "win-$arch" }
               "macos"   { "osx-$arch" }
@@ -85,21 +77,16 @@ jobs:
               $outputDir = Join-Path $env:GITHUB_WORKSPACE "dist/$($proj.name)/$os/$arch"
               New-Item -ItemType Directory -Force -Path $outputDir
 
-              # Publish
-              dotnet publish $proj.path -c Release -r $rid `
-                /p:PublishSingleFile=true /p:DebugType=None /p:DebugSymbols=false `
-                /p:PublishDir=$outputDir
-
-              # Zip output
-              $zipName = "DotnetActions-$version-$($proj.name)-$osName-$arch.zip"
+              dotnet publish $proj.path -c Release -r $rid /p:PublishSingleFile=true /p:DebugType=None /p:DebugSymbols=false /p:PublishDir=$outputDir
+                
+              $zipName = "DotnetActions-$version-$($proj.name)-$os-$arch.zip"
               Compress-Archive -Path "$outputDir/*" -DestinationPath "$distRoot/$zipName" -Force
           }
 
       - name: Upload Artifacts
         uses: actions/upload-artifact@v4
         with:
-          # unique artifact name per matrix run
-          name: $osName-${{ matrix.arch }}
+          name: ${{ matrix.os }}-${{ matrix.arch }}
           path: dist/*.zip
           if-no-files-found: error
 
@@ -133,9 +120,7 @@ jobs:
                   $notes = $matches[1].Trim()
               }
           }
-          # Escape newlines and % for GitHub Actions
-          $escaped = $notes.Replace('%','%25').Replace("`n",'%0A').Replace("`r",'%0D')
-          Add-Content -Path $env:GITHUB_OUTPUT -Value "notes=$escaped"
+          Add-Content -Path $env:GITHUB_OUTPUT -Value "notes=$notes"
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v1
