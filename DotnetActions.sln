@@ -1,0 +1,31 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 18
+VisualStudioVersion = 18.0.11222.15
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "DotnetAction.Cmd", "DotnetAction.Cmd\DotnetAction.Cmd.csproj", "{6E1F95C3-9402-4680-AA56-27BCF5BC9179}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "DotnetAction.Gui", "DotnetAction.Gui\DotnetAction.Gui.csproj", "{DC6EF305-F4CF-4094-BF26-AF483EC26F7E}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{6E1F95C3-9402-4680-AA56-27BCF5BC9179}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{6E1F95C3-9402-4680-AA56-27BCF5BC9179}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{6E1F95C3-9402-4680-AA56-27BCF5BC9179}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{6E1F95C3-9402-4680-AA56-27BCF5BC9179}.Release|Any CPU.Build.0 = Release|Any CPU
+		{DC6EF305-F4CF-4094-BF26-AF483EC26F7E}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{DC6EF305-F4CF-4094-BF26-AF483EC26F7E}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{DC6EF305-F4CF-4094-BF26-AF483EC26F7E}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{DC6EF305-F4CF-4094-BF26-AF483EC26F7E}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {E60C9EB2-9375-4542-9568-BACF085506BA}
+	EndGlobalSection
+EndGlobal
