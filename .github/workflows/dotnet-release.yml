@@ -59,6 +59,14 @@ jobs:
           $version = "${{ steps.extract_version.outputs.version }}"
           $os = "${{ matrix.os }}"
           $arch = "${{ matrix.arch }}"
+
+          # Map ubuntu -> linux for filenames
+          $osName = switch ($os) {
+              "windows" { "windows" }
+              "macos"   { "macos" }
+              "ubuntu"  { "linux" }
+          }
+
           $rid = switch ($os) {
               "windows" { "win-$arch" }
               "macos"   { "osx-$arch" }
@@ -79,7 +87,7 @@ jobs:
 
               dotnet publish $proj.path -c Release -r $rid /p:PublishSingleFile=true /p:DebugType=None /p:DebugSymbols=false /p:PublishDir=$outputDir
                 
-              $zipName = "DotnetActions-$version-$($proj.name)-$os-$arch.zip"
+              $zipName = "DotnetActions-$version-$($proj.name)-$osName-$arch.zip"
               Compress-Archive -Path "$outputDir/*" -DestinationPath "$distRoot/$zipName" -Force
           }
 
